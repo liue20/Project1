@@ -1,0 +1,270 @@
+---
+title: "15.458 Project 1"
+author: "Ira Li, Edward Liu and Ellie Liu"
+date: "9/14/2018"
+output:
+  word_document: default
+  pdf_document: default
+---
+######1.Read the article from the New York Times, “Market Swings Are Becoming New Standard" (9/12/2011, link available on Canvas) and then use the Bloomberg terminal to get OHLC time series data for the S&P 500 index to answer the questions below. In the Bloomberg Excel “Spreadsheet Builder," these data fields are found under "Market Activity" and designated as Open (PX OPEN), High (PX HIGH), Low (PX LOW) and Last (PX LAST), respectively.) Get the longest set of daily data available.
+
+```{r}
+library(quantmod)
+suppressMessages(library("tidyverse"))
+```
+
+```{r}
+mydata = read.csv("/Users/EllieLiu/Desktop/2018 Fall/Financial Data/Proj 1/S&P500.csv")
+```
+
+a) What date range did you obtain? Is your data set complete?
+
+The obtained data ranges from 12/30/1927 to today.The data set is not complete in the sense that open, high, low and close prices are all equal before 1982.
+
+b) List data integrity checks that can be performed on the data. Apply them. What errors, if any, did you find? Which errors, if any, could be corrected without using alternative data sources?
+
+```{r}
+#there is no NAs
+any(is.na(mydata))
+
+#All data are positive values
+table(sign(mydata[,2]))
+table(sign(mydata[,3]))
+table(sign(mydata[,4]))
+table(sign(mydata[,5]))
+
+notrade <- function(n){
+  count = 0
+  
+  for (i in 1:n){
+  if (mydata[i, 3] == mydata[i, 4]){
+    count = count + 1
+    }
+  }
+  count
+}
+notrade(nrow(mydata))
+
+trade_overnight <- function(n){
+  count = 0
+  
+  for (i in 1:n){
+  if (mydata[i, 5] != mydata[i+1, 2]){
+    count = count + 1
+    }
+  }
+  count
+}
+
+trade_overnight(nrow(mydata)-1)
+```
+By performing data integrity check, we found no NAs and all data positive. There are 13604 days with Low = High, which means that no trade has been made throughout the day or all stocks are traded at the same price. We corrected the error by removing the first 13604 data from 12/30/1927 to 04/20/1982. We also found that for 18085 days, the previous closing price does not match with following opening price. However, the listed closing price is the last trading price during the business hours, and the exchange does not lock in the price until the following morning. Thus, it is reasonable for the open to slightly deviate from the previous close. 
+
+c) Based on your data set, estimate the probabilities that the market’s daily high value occurs at the open or at the close, respectively. Do the same for the market’s daily low value. That is, you should estimate four probabilities, Prob(phigh = popen), Prob(phigh = pclose), etc. Explain your method and assumptions. Can these results be used to test the random walk hypothesis?
+
+```{r}
+mydata_n = mydata[13604:21013,]
+max_open = c(mydata_n[,2] == mydata_n[,3])
+num_max_open = sum(max_open) # number of days max occurs at open
+p_max_open = num_max_open / dim(mydata_n)[1] # prob = 0.1164642
+
+max_last = c(mydata_n[,5] == mydata_n[,3])
+num_max_last = sum(max_last) # max occurs at last
+p_max_last = num_max_last / dim(mydata_n)[1] # prob = 0.0734143
+
+min_open = c(mydata_n[,2] == mydata_n[,4])
+num_min_open = sum(min_open) # number of days min occurs at open
+p_min_open = num_min_open / dim(mydata_n)[1] # prob = 0.142915
+
+min_last = c(mydata_n[,5] == mydata_n[,4])
+num_min_last = sum(min_last) # min occurs at last
+p_min_last = num_min_last / dim(mydata_n)[1] # prob = 0.01997301
+```
+We estimated the probabilities under the assumption that the price
+of S&P 500 index on each day follows a Normal distribution and are
+i.i.d. across time. The true probabilities are estimated to be
+equal to the sample probabilities observed from the historical
+price given. The results are:
+
+  + Prob(phigh=popen) = 11.65%
+  + Prob(phigh=pclose) = 7.34%
+  + Prob(plow=popen) = 14.29%
+  + Prob(plow=pclose) = 2.00%
+
+From the estimation, we conclude that the price does not follow a symmetric random walk. If it follows a symmetric random walk, then all of the four probabilities should equal to zero, since the probability of a symmetric random walk returning to its origin is 1.
+
+d) From 1/1/1980 through 8/30/2011, find the top 20 intraday ranges. List them, ordered by size. How many occurred during the final three-year sub-period (i.e., 9/1/2008–8/30/2011)?
+
+As shown in the chart below, fifteen of them occurred during the final three-year sub-period.
+
+```{r}
+mydata_2 = mydata[13022:21013,]
+intraday = c((mydata_2[, 3] - mydata_2[, 4]) / mydata_2[, 4])
+result = cbind(mydata_2, intraday)
+result = result[order(result[,6], decreasing = TRUE),]
+head(result, 20)
+```
+
+```{r}
+k = as.Date(result[1:20, 1], "%m/%d/%y")
+num = 0
+for (i in 1:20){
+  if(k[i] < as.Date(c("2011-08-30")) & k[i] > as.Date(c("2008-09-01"))){
+    num = num + 1
+  }
+}
+num
+```
+
+e) List the top 20 positive overnight returns during the period 1/1/1980–8/30/2011 in reverse chronological order, and separately list the top 20 negative overnight returns. Which three-year period had the largest number of each?
+
+```{r}
+overnight <- function(n){
+  overnight_ret <- c()
+  for (i in 1:n-1){
+    Ron <- (mydata_2[i+1, 2] - mydata_2[i,5])/mydata_2[i,5]
+    overnight_ret <- c(overnight_ret, Ron)
+  }
+  return(overnight_ret)
+}
+overnight <- c(NA,overnight(nrow(mydata_2)))
+result2 = cbind(mydata_2, overnight)
+result2_max = result2[order(result2[, 6], decreasing = TRUE),]
+```
+
+Top 20 positive overnight returns:
+```{r}
+head(result2_max, 20)
+
+k2_max = as.Date(result2_max[1:20, 1], "%m/%d/%y")
+k2_max = sort(k2_max, decreasing = TRUE)
+
+num2 = 0
+for (i in 1:20){
+  if(k2_max[i] < as.Date(c("1982-12-31")) & k2_max[i] > as.Date(c("1980-01-01"))){
+    num2 = num2 + 1
+  }
+}
+num2
+```
+The period of 1/1/1980 to 12/31/1982 has all twenty of those, which is the most among all periods.
+
+Top 20 negative overnight returns:
+```{r}
+result2_min = result2[order(result2[, 6]),]
+head(result2_min, 20)
+
+k2_min = as.Date(result2_min[1:20, 1], "%m/%d/%y")
+k2_min = sort(k2_min, decreasing = TRUE)
+
+num3 = 0
+for (i in 1:20){
+  if(k2_min[i] < as.Date(c("1982-12-31")) & k2_min[i] > as.Date(c("1980-01-01"))){
+    num3 = num3 + 1
+  }
+}
+num3
+```
+The period of 1/1/1980 to 12/31/1982 has nineteen of those, which is the most among all periods.
+
+f) List the top 20 jumps jt (ranked by absolute value) in the data set. How many occurred during the 3 years ending 8/30/2011?
+
+```{r}
+df_close <- mydata_2 %>%
+  select('Dates','PX_LAST') %>%
+  mutate(ret = log(PX_LAST/lag(PX_LAST)))
+df_close$std = rollapply(df_close$ret, width = 63, FUN = sd,align='right',fill = NA)
+df_close$jump_m <- df_close$ret/df_close$std
+df_close$jump_m_abs <- abs(df_close$jump_m)
+jump_max = df_close[order(df_close$jump_m_abs, decreasing = TRUE),]
+```
+
+Top 20 jumps:
+```{r}
+head(jump_max,20)
+
+k3_max = as.Date(jump_max[1:20, 1], "%m/%d/%y")
+k3_max = sort(k3_max, decreasing = TRUE)
+
+num4 = 0
+for (i in 1:20){
+  if(k3_max[i] < as.Date(c("2011-08-30")) & k3_max[i] > as.Date(c("2008-09-01"))){
+    num4 = num4 + 1
+  }
+}
+num4
+```
+Four of them occurred during the 3 years ending 8/30/2011.
+
+
+######2.On October 6, 1982, equities in the U.S. soared on news of falling interest rates. Different data vendors report conflicting results for S&P 500 index OHLC data for that date. What discrepancies can you find? How economically significant are they? How could they be resolved? Explain what you think were the correct S&P 500 index values on that day and why. 
+
+Falling interest rates affect investors' psychology and their projection on the market. Theoretically, when interest rate (the federal funds rate) decreases, the Fed is increasing the money supply and encouraging spending and investments, causing stock prices to rise.
+
+The low provided by both vendors are 122.00, the opening price. According to Yahoo Finance, the high of October 6, 1982 is the closing price 125.97, while that reported by Bloomberg is the closing price 126.97. Both data vendors provide 125.99 as the open of October 7, 1982. We thought Yahoo Finance is more reliable, since the overnight price volatility is smaller. The discrepency is not economically significant because the value is relatively small.
+
+```{r}
+plot(df_close$ret, type = "l", main = "S&P 500 Daily Returns", ylab = "Log Return")
+hist(df_close$ret, breaks = 50, main = "Distribution of S&P 500 Daily Return 1950-2018")
+```
+The log return data roughly fit normal distribution.
+
+######3. On March 6, 2015, Dow Jones announced that one of the thirty companies making up the venerable Dow Jones Industrial Average would be replaced, effective March 18, 2015. 
+(a) Determine the value the index divisor would have had if the change were made
+at the market close on the announcement date.
+```{r}
+# df consists of prices of DJIA, 30 components, AMZN and Bershire Hathaway on 
+# announcement date 03/06/2015
+df = read.csv("/Users/EllieLiu/Desktop/2018 Fall/Financial Data/Proj 1/15.458-PS1-Q3.csv", sep = ",", header = TRUE)
+
+sum.components = sum(df)-df$INDU.Index-df$AAPL.UW.Equity-
+  df$AMZN.US.Equity-df$BRK.A.US.Equity #sum of 30 components before change
+sum.components.new = sum.components + df$AAPL.UW.Equity - 
+  df$T.US.Equity #APPL replace AT&T
+index.div = sum.components/df$INDU.Index
+index.div.new = sum.components.new/df$INDU.Index
+cat("The index divisor changed from ", index.div, " to ", index.div.new)
+```
+
+(b) What fraction of the total index value was made up of the departing company?
+That is, what was the total index weight being replaced, as of the announcement
+date?
+```{r}
+frac.att = df$T.US.Equity/sum.components
+cat("The fraction of the total index value of the 
+    departing company (AT&T) is", frac.att)
+
+```
+
+
+(c) Did the 29 remaining companies (i.e., those not being changed) have greater or
+lesser total weight within the index after the change? That is, what was their
+total weight with and without the change, as of the announcement date?
+```{r}
+frac.remaining = 1-frac.att
+frac.remaining.new = 1-df$AAPL.UW.Equity/sum.components.new
+
+cat("The fraction of the 29 remaining companies changed from", 
+    frac.remaining, " to ", frac.remaining.new)
+```
+
+(d) Suppose instead that the replacement member had been Amazon.com. What
+would be the new estimate of the divisor as of the announcement date? Suppose
+the replacement had been Berkshire Hathaway (Class A shares). What would be
+the new estimate of the divisor as of the announcement date?
+```{r}
+sum.components.amzn = sum.components - df$T.US.Equity + 
+  df$AMZN.US.Equity
+sum.components.berk = sum.components - df$T.US.Equity + 
+  df$BRK.A.US.Equity
+index.div.amzn = sum.components.amzn/df$INDU.Index # AMZN replaced AT&T
+index.div.berk = sum.components.berk/df$INDU.Index # BRK replaced AT&T
+cat("If AMZN replaced AT&T, index divisor became ", index.div.amzn)
+cat("If BRK replaced AT&T, index divisor became ", index.div.berk)
+```
+
+
+(e) What role did stock splits play in the timing of the replacement?
+
+In the timing or replacement, if stocks splits occur at component companies (either the new company or the remaining 29 companies), index divisor decreases so that the index remained the same.
+
